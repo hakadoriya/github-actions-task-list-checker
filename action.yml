@@ -1,0 +1,84 @@
+name: github-actions-task-list-checker
+# MEMO: Description must be less than 125 characters.
+description: 'A GitHub Action to check if there are not-completed tasks in the Pull-Request body.'
+author: 'hakadoriya'
+
+branding:
+  icon: search
+  color: gray-dark
+
+inputs:
+  github-token:
+    description: 'The GitHub token.'
+    required: true
+  debug:
+    description: 'Debug mode'
+    required: false
+    default: 'false'
+
+outputs:
+  task-list:
+    value: ${{ steps.check-task-list.outputs.task-list }}
+    description: 'The task list.'
+  not-completed-task-list:
+    value: ${{ steps.check-task-list.outputs.not-completed-task-list }}
+    description: 'The not-completed task list.'
+
+runs:
+  using: composite
+  steps:
+    - name: check-task-list
+      id: check-task-list
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+      shell: bash
+      run: |
+        # Check if there are not-completed tasks in the Pull-Request body
+        set -Eeu -o pipefail
+        #
+        # Get Pull-Request body
+        #
+        prBody=$(gh pr --repo "${GITHUB_REPOSITORY:?}" view "${GITHUB_HEAD_REF:?}" --json body --jq .body)
+        if [ -z "${prBody-}" ]; then
+          echo "::notion::The Pull-Request body is empty."
+          exit 0
+        fi
+        echo "${prBody:?}" | sed 's/^/::debug::[prBody] /'
+        #
+        # Get task list
+        #
+        taskList=$(echo "${prBody:?}" | grep -E '^[[:space:]]*[\*\-] +\[[ x]\]') || true
+        if [ -n "${taskList-}" ]; then
+          echo "::debug::Task list:"
+          echo "${taskList:?}" | sed 's/^/::debug::[taskList] /'
+          echo "task-list=$(echo "${taskList:?}" | perl -0pe 's@\n@\\n@g')" >>"${GITHUB_OUTPUT}"
+        else
+          echo "::notice::There are no tasks."
+          exit 0
+        fi
+        #
+        # Check if there are not-completed tasks
+        #
+        notCompletedTaskList=$(echo "${taskList:?}" | grep -E '^[[:space:]]*[\*\-] +\[ \]') || true
+        if [ -n "${notCompletedTaskList-}" ]; then
+          echo "::error::There are not-completed tasks."
+          echo "${notCompletedTaskList:?}" | sed 's/^/::error::/'
+          echo "not-completed-task-list=$(echo "${notCompletedTaskList:?}" | perl -0pe 's@\n@\\n@g')" >>"${GITHUB_OUTPUT}"
+          exit 1
+        else
+          echo "::notice::All tasks are completed."
+          echo "${taskList:?}" | sed 's/^/::notice::/'
+        fi
+    - name: DEBUG
+      if: always() && inputs.debug == 'true'
+      shell: bash
+      run: |
+        cat <<'DEBUG_DOC'
+        == DEBUG =======================================================
+        -- github -----------------------------------------------------
+        github.event_name: ${{ github.event_name }}
+        github.ref: ${{ github.ref }}
+        -- toJSON(github) ----------------------------------------------
+        ${{ toJSON(github) }}
+        ================================================================
+        DEBUG_DOC
