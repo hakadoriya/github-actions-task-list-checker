@@ -31,9 +31,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
+      contents: read
       pull-requests: read
     steps:
-      - uses: hakadoriya/github-actions-task-list-checker@main
+      - uses: hakadoriya/github-actions-task-list-checker@v0.0.0
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 ```
